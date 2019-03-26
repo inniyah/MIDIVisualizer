@@ -1,75 +1,96 @@
-#Compiler: g++
-CXX = g++
+#!/usr/bin/make -f
 
-#Include directories (for headers): standard include dirs in /usr and /usr/local, and our helper directory.
-INCLUDEDIR = -I/usr/include/ -I/usr/local/include/ -Isrc/helpers/ -Isrc/libs/ -Isrc/libs/glfw/include/
+CC= gcc
+CXX= g++
+RM= rm -f
 
-#Libraries needed: OpenGL, GLEW and glfw3. glfw3 requires Cocoa, IOKit and CoreVideo.
-LIBDIR = -Lsrc/libs/glfw/lib-mac/ -Lsrc/libs/nfd/lib-mac/
-LIBS = $(LIBDIR) -lglfw3 -lnfd -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -framework AppKit
+PKGCONFIG= pkg-config
+PACKAGES= glfw3 gl gtk+-3.0
 
-#Compiler flags: C++11 standard, and display 'all' warnings.
-CXXFLAGS = -std=c++11 -Wall -O3
+CFLAGS= -O2 -g -Wall -std=c++17 \
+	-Isrc/helpers/ -Isrc/libs/ \
+	-fstack-protector-strong \
+	-Wall \
+	-Wformat \
+	-Werror=format-security \
+	-Wdate-time \
+	-D_FORTIFY_SOURCE=2 \
+	$(shell $(PKGCONFIG) --cflags $(PACKAGES))
 
-#Build directory
-BUILDDIR = build
-#Source directory
-SRCDIR = src
+LDFLAGS= \
+	-Wl,-z,defs,-z,relro,-z,now \
+	-Wl,--as-needed \
+	-Wl,--no-undefined
 
-#Paths to the source files
-#Collect sources from subdirectories (up to depth 3) 
-# /!\ at depth 4, src/libs/glm/detail contains dummy cpp files that we want to ignore.
-SRC_DEPTH_2 = $(wildcard $(SRCDIR)/*/*.cpp)
-SRC_DEPTH_3 = $(wildcard $(SRCDIR)/*/*/*.cpp)
-SOURCES = $(SRC_DEPTH_3) $(SRC_DEPTH_2) $(SRCDIR)/main.cpp
-TOOLSOURCES = $(SRC_DEPTH_3) $(SRC_DEPTH_2) $(SRCDIR)/packager.cpp
+LIBS= \
+	-lrt -lm -pthread -ldl \
+	$(shell $(PKGCONFIG) --libs $(PACKAGES))
 
-#Paths to the object files
-OBJECTS = $(SOURCES:$(SRCDIR)/%.cpp=$(BUILDDIR)/%.o)
-TOOLOBJECTS = $(TOOLSOURCES:$(SRCDIR)/%.cpp=$(BUILDDIR)/%.o)
+CPP_SRCS= \
+	src/main.cpp \
+	src/midi/MIDIFile.cpp \
+	src/midi/MIDITrack.cpp \
+	src/midi/MIDIUtils.cpp \
+	src/rendering/Background.cpp \
+	src/rendering/Framebuffer.cpp \
+	src/rendering/MIDIScene.cpp \
+	src/rendering/Renderer.cpp \
+	src/rendering/ScreenQuad.cpp \
+	src/rendering/State.cpp \
+	src/rendering/camera/Camera.cpp \
+	src/rendering/camera/Keyboard.cpp \
+	src/helpers/MeshUtilities.cpp \
+	src/helpers/ProgramUtilities.cpp \
+	src/helpers/ResourcesManager.cpp \
+	src/resources/flash_image.cpp \
+	src/resources/font_image.cpp \
+	src/resources/particles_image.cpp \
+	src/resources/shaders.cpp \
+	src/libs/gl3w/gl3w.cpp \
+	src/libs/imgui/imgui.cpp \
+	src/libs/imgui/imgui_demo.cpp \
+	src/libs/imgui/imgui_draw.cpp \
+	src/libs/imgui/imgui_impl_glfw_gl3.cpp
 
-#Paths to the subdirectories
-SUBDIRS_LIST = $(shell find src -type d)
-SUBDIRS = $(SUBDIRS_LIST:$(SRCDIR)%=$(BUILDDIR)%)
+C_SRCS= \
+	src/libs/nfd/nfd_common.c \
+	src/libs/nfd/nfd_gtk.c
 
-#Executable name
-EXECNAME = midiviz
-TOOLNAME = midiviz-packager
+OBJS= $(subst .cpp,.o,$(CPP_SRCS)) $(subst .c,.o,$(C_SRCS))
 
-#Re-create the build dir if needed, compile and link.
-all: dirs $(EXECNAME)
+BINARY= midiviz
 
-#Linking phase: combine all objects files to generate the executable
-$(EXECNAME): dirs $(OBJECTS)
-	@echo "Linking $(EXECNAME)..."
-	@$(CXX) $(OBJECTS) $(LIBS) -o $(BUILDDIR)/$(EXECNAME)
-	@echo "Done!"
+all: $(BINARY)
 
-$(TOOLNAME): dirs $(TOOLOBJECTS)
-	@echo "Linking $(TOOLNAME)..."
-	@$(CXX) $(TOOLOBJECTS) $(LIBS) -o $(BUILDDIR)/$(TOOLNAME)
-	@echo "Done!"
+$(BINARY): $(OBJS) packager
+	./packager
+	$(CXX) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
 
-#Compiling phase: generate the object files from the source files
-$(BUILDDIR)/%.o : $(SRCDIR)/%.cpp
-	@echo "Compiling $<"
-	@$(CXX) -c $(CXXFLAGS) $(INCLUDEDIR)  $< -o $@
+packager: src/packager.o src/libs/lodepng/lodepng.o
+	$(CXX) $(LDFLAGS) -o $@ $+
 
-#Run the executable
-run:
-	@./$(BUILDDIR)/$(EXECNAME)
+%.o: %.cpp
+	$(CXX) -o $@ -c $< $(CFLAGS)
 
-# Package the images as raw arrays and write them in the source directory.
-package: dirs $(TOOLNAME)
-	@./$(BUILDDIR)/$(TOOLNAME)
-	@echo "You can now compile $(EXECNAME) with the udpated data."
+%.o: %.cc
+	$(CXX) -o $@ -c $< $(CFLAGS)
 
-#Create the build directory and its subdirectories
-dirs:
-	@mkdir -p $(SUBDIRS)
+%.o: %.c
+	$(CC) -o $@ -c $< $(CFLAGS)
 
-#Remove the whole build directory
-.PHONY: clean
-clean :
-	rm -r $(BUILDDIR)
+depend: .depend
+
+.depend: $(CPP_SRCS) $(C_SRCS)
+	$(RM) ./.depend
+	$(CXX) $(CFLAGS) -MM $^>>./.depend;
+
+clean:
+	$(RM) $(OBJS) $(shell rm -fv $$(find . -name *.o)) src/*.o $(BINARY) packager
+
+distclean cleanall: clean
+	$(RM) *~ .depend core *.out *.bak
+
+include .depend
+
+.PHONY: all depend clean distclean cleanall
 

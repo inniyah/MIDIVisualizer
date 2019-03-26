@@ -4,9 +4,9 @@
 
 #include "ResourcesManager.h"
 #include "ProgramUtilities.h"
-// Ressources headers.
+// Resources headers.
 
-#include "../ressources/data.h"
+#include "../resources/data.h"
 
  unsigned char* ResourcesManager::getDataForImage(const std::string & fileName, unsigned int & imwidth, unsigned int & imheight){
 	

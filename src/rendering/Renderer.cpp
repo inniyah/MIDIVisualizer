@@ -458,8 +458,8 @@ void Renderer::renderFile(const std::string & outputDirPath, const float frameRa
 	GLubyte * data = new GLubyte[_finalFramebuffer->_width * _finalFramebuffer->_height * 3];
 	
 	// Generate and save frames.
-	int framesCount = std::ceil((_scene->duration()+10.0f) * frameRate);
-	int targetSize = std::to_string(framesCount).size();
+	size_t framesCount = std::ceil((_scene->duration()+10.0f) * frameRate);
+	size_t targetSize = std::to_string(framesCount).size();
 	
 	// Start by clearing up the blur and particles buffers.
 	resize(_camera._screenSize[0], _camera._screenSize[1]);
